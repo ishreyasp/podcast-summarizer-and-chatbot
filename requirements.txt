@@ -2,13 +2,10 @@ xmltodict
 vosk 
 pydub
 langchain-community
-langchain-google-vertexai
 langchain-core
 langchain_huggingface
 faiss-cpu
 google-generativeai
-transformers
-torch
 python-dotenv
 streamlit
 langchain_google_genai
