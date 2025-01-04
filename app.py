@@ -13,7 +13,7 @@ db_params = {
     'dbname': 'podcast_metadata',
     'user': 'airflow',
     'password': 'airflow',
-    'host': '172.18.0.3',
+    'host': 'postgres',
     'port': '5432'
 }
 

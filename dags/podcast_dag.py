@@ -6,6 +6,7 @@ import xmltodict
 import pickle
 import google.generativeai as genai
 import faiss
+from datetime import datetime, timedelta
 from langchain_core.documents import Document
 from langchain_google_genai import GoogleGenerativeAI
 from airflow.decorators import dag, task
@@ -23,6 +24,8 @@ from dotenv import load_dotenv
 
 default_args = {
     'owner': 'airflow',
+    'retries': 2,
+    'retry_delay': timedelta(minutes=2)
 }
 
 headers = {
@@ -33,14 +36,14 @@ load_dotenv()
 
 @dag(
     dag_id='podcast_summary',
+    description='Podcast summarizer DAG',
     default_args=default_args,
-    schedule_interval=None,
+    schedule_interval='@daily',
     start_date=pendulum.datetime(2024, 12, 19),
     catchup=False
 )
 def podcast_summary():
 
-    # Task to create a new table in the database
     create_table = PostgresOperator(
         task_id='create_podcast_metadata_table',
         postgres_conn_id=os.getenv('POSTGRES_CONN_ID'),
@@ -180,6 +183,9 @@ def podcast_summary():
             hook.run(sql, parameters=(transcript.strip(), file_name))
             print(f"Transcript stored in database for file: {file_name}")
 
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                print(f"Deleted file: {file_path}")
         except Exception as e:
             print(f"Error processing file {file_name}: {e}")
             raise
@@ -192,7 +198,7 @@ def podcast_summary():
             if row["filename"].endswith(".mp3"):
                 print(f"Transcribing and storing transcript for {row['filename']}...")
                 process_audio_and_store_in_db(row["filename"])
-        print("All files processed and transcripts stored in the database successfully.")
+        print("All files processed and transcripts stored in the database successfully.")    
 
     @task
     def generate_summary():
@@ -267,12 +273,11 @@ def podcast_summary():
         with open(os.getenv('PICKLE_FILE_PATH_FOR_DOCKER'), "wb") as f:
             pickle.dump(vector_store, f)
         print("All embeddings are stored and serialized in FAISS vector store.")    
-        query = "What was US economy average growth in Q3?"
         prompt_template = """Given the following question, generate an answer based on the vector store embeedings only.
                 In the answer try to provide as much text as possible from the ebeddings as a source without making much changes.
                 If the answer is not found, kindly state "I don't know." Don't try to make up an answer.
 
-                QUESTION: {query}"""
+                QUESTION: What was US economy average growth in Q3?"""
         if os.path.exists(os.getenv('PICKLE_FILE_PATH_FOR_DOCKER')):
             with open(os.getenv('PICKLE_FILE_PATH_FOR_DOCKER'), "rb") as f:
                 vectorstore = pickle.load(f)
@@ -280,7 +285,7 @@ def podcast_summary():
                     llm=llm,
                     retriever=vectorstore.as_retriever(search_kwargs={"k": 3})
                 )
-                result = chain({"question": query})
+                result = chain({"question": prompt_template})
                 print(result)
 
     podcast_metadata = get_podcast_metadata()
